@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="TheDataShredderCLI:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/TheDataShredderCLI_jar</output-path>
+    <root id="archive" name="TheDataShredderCLI.jar">
+      <element id="module-output" name="TheDataShredderCLI" />
+    </root>
+  </artifact>
+</component>
