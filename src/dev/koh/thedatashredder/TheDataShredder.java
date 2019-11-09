@@ -13,6 +13,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.List;
 
 public class TheDataShredder {
 
@@ -25,32 +27,73 @@ public class TheDataShredder {
     private static final long FILE_SIZE_THRESHOLD_LIMIT = ONE_MB * 64;
     private long fileLength;
     private boolean shouldDamageEntireFile;
+    private boolean shouldDeleteFiles;
+    private int listCode;
     private long origFileCount;
 
     private MyTimer myTimer;
     private File targetFile;
 
     public TheDataShredder() {
-        this(true, null);
+        this(true, false, null, 0);
     }
 
-    public TheDataShredder(boolean shouldDamageEntireFile, File targetFile) {
+    public TheDataShredder(boolean shouldDamageEntireFile, boolean shouldDeleteFiles, File targetFile) {
+        this(shouldDamageEntireFile, shouldDeleteFiles, targetFile, 0);
+    }
+
+    public TheDataShredder(boolean shouldDamageEntireFile, boolean shouldDeleteFiles, int listCode) {
+        this(shouldDamageEntireFile, shouldDeleteFiles, null, listCode);
+    }
+
+    public TheDataShredder(boolean shouldDamageEntireFile, boolean shouldDeleteFiles, File targetFile, int listCode) {
         this.shouldDamageEntireFile = shouldDamageEntireFile;
-        this.targetFile = targetFile;
+        this.shouldDeleteFiles = shouldDeleteFiles;
+        this.listCode = listCode;
+
+        if (targetFile == null) {
+            String filePath = KOHStringUtil.userInputString("Enter Src Dir. Path : ", StringOptions.DIR_OR_FILE, new MyTimer());
+            assert filePath != null;
+            this.targetFile = new File(filePath);
+        } else {
+            this.targetFile = targetFile;
+        }
+
     }
 
-    public static void main(String[] args) {
+    public void start() {
 
-        System.out.println("Begin.");
+        try {
 
-        TheDataShredder theDataShredder = new TheDataShredder();
-        theDataShredder.start();
+            init();
+            beginShredding();
 
-        System.out.println("\nEnd.");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        myTimer.stopTimer(true);
+        System.out.println("\n|================================|\n");
 
     }
 
-    void start() {
+/*
+    private void init() throws IOException {
+
+        //  Initialize MyTimer
+        myTimer = new MyTimer();
+        myTimer.startTimer();
+
+*/
+/*
+        //  User Input for filePath
+        userInputFilePath();*//*
+
+
+    }
+*/
+
+    /*void start1() {
 
         try {
 
@@ -73,46 +116,30 @@ public class TheDataShredder {
             e.printStackTrace();
         }
 
-    }
+    }*/
 
-    private void init() throws IOException {
+    private void init() {
 
         //  Initialize MyTimer
         myTimer = new MyTimer();
         myTimer.startTimer();
 
-        //  User Input for filePath
-        userInputFilePath();
-
     }
 
-    private void userInputFilePath() throws IOException {
-
-        String promptFilePath = "Enter Valid File/Dir. Path : ";
-        String filePath = KOHStringUtil.userInputString(promptFilePath, StringOptions.DIR_OR_FILE, myTimer);
-
-        if (filePath == null) {
-            System.out.println("No Valid File/Dir. Path Entered!\n" +
-                    "Program Terminating...");
-            System.exit(-17);
-        } else targetFile = new File(filePath);
-
-        String promptDeleteEntireFile = "Wanna Delete Entire File? [Y/N] : ";
-        String strYesOrNo = KOHStringUtil.userInputString(promptDeleteEntireFile, StringOptions.YES_OR_NO, myTimer);
-        char ch = strYesOrNo != null ? strYesOrNo.charAt(0) : 'n';
-
-        if (ch == 'y' || ch == 'Y')
-            shouldDamageEntireFile = true;
-
-        String targetType = targetFile.isDirectory() ? "Directory" : "File";
-        System.out.println(targetType + " To Be Destroyed: \n" + targetFile.getCanonicalPath());
-
-    }
-
-    public void beginShredding() throws IOException {
+    private void beginShredding() throws IOException {
 
         if (targetFile.isFile()) {
+
             damageFile(targetFile);
+
+            if (shouldDeleteFiles) {
+                boolean hasDeleted = deleteFileNow(targetFile);
+                if (hasDeleted)
+                    System.out.println("File : [" + targetFile.getAbsolutePath() + "]\t|\tShredded Successfully..!!\n");
+                else
+                    System.out.println("Unable to Shred File : [" + targetFile.getAbsolutePath() + "]\t|\tShredding Failed..!!\n");
+            }
+
         } else if (targetFile.isDirectory()) {
 
             DirFilesCounter dirFilesCounter = new DirFilesCounter();
@@ -125,6 +152,12 @@ public class TheDataShredder {
 
             System.out.println("\nFiles Destroyed : " + dirTreeWalker.filesCount);
             System.out.println("Dirs. Visited : " + dirTreeWalker.dirsCount);
+            System.out.println("Failed to Destroy : " + dirTreeWalker.failureCount);
+            System.out.println("Deleted Files Count : " + dirTreeWalker.deletedFilesCount);
+
+            //  Display list of files' absolute path
+            if (listCode != 0)
+                dirTreeWalker.displayLists(listCode);
 
         }
 
@@ -132,8 +165,9 @@ public class TheDataShredder {
 
     private void damageFile(File file) {
 
+        //  TODO : Abstract Print Logs when Shredding Files
+
         this.fileLength = file.length();
-        String tempFileAbsPath = file.getAbsolutePath();
         System.out.println("Currently Processing: [" + file.getAbsolutePath() + "]");
 
         try (RandomAccessFile raf = new RandomAccessFile(file, "rwd")) {
@@ -156,18 +190,38 @@ public class TheDataShredder {
                     "\nProgram Terminated...");
         }
 
-        //  Rename File & Delete It!
-        renameFileToCurrentTimeStamp(file, tempFileAbsPath);
+    }
+
+    private boolean renameFileNameToStr(File file, String newFileName) {
+        //  TODO : Move this method to KOHFilesUtil
+
+        boolean hasRenamed;/* = file.renameTo(new File(file.getParentFile(), currentTimeStamp + SHREDDED_EXTENSION));*/
+
+        try {
+            Files.move(file.toPath(), file.toPath().resolveSibling(newFileName));
+            hasRenamed = true;
+        } catch (IOException e) {
+            e.printStackTrace();
+            hasRenamed = false;
+        }
+
+        return hasRenamed;
 
     }
 
-    private void renameFileToCurrentTimeStamp(File file, String fileAbsPath) {
+    private boolean deleteFileNow(File file) {
+        //  TODO : Move this method to KOHFilesUtil
 
-        String currentTimeStamp = KOHStringUtil.generateCurrentTimeStamp();
-        boolean hasRenamed = file.renameTo(new File(file.getParent(), currentTimeStamp + SHREDDED_EXTENSION));
-//        boolean hasDeleted = file.delete();
-        if (hasRenamed) System.out.println("File : [" + fileAbsPath + "] Shredded Successfully..!!\n");
-        else System.out.println("Unable to Shred File : [" + fileAbsPath + "]   |   Shredding Failed..!!\n");
+        boolean hasDeleted;
+
+        try {
+            hasDeleted = Files.deleteIfExists(file.toPath());
+        } catch (IOException e) {
+            e.printStackTrace();
+            hasDeleted = false;
+        }
+
+        return hasDeleted;
 
     }
 
@@ -282,6 +336,10 @@ public class TheDataShredder {
 
         long filesCount;
         long dirsCount;
+        long failureCount;
+        int deletedFilesCount;
+        List<String> listOfFailedFiles = new ArrayList<>();
+        List<String> listOfSuccessfulFiles = new ArrayList<>();
 
         @Override
         public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
@@ -292,40 +350,107 @@ public class TheDataShredder {
         public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
 
             //  Time Stamp : 22nd August 2K19, 01:57 AM..!!
+            //  Avoiding Re-traversal of dir tree due to renaming of files
             if (filesCount >= origFileCount)
                 return FileVisitResult.SKIP_SUBTREE;
 
             filesCount++;
             damageFile(file.toFile());
+
+            //  Rename File & Delete It!
+            handleRenameAndDeleteFile(file.toFile());
+
             return FileVisitResult.CONTINUE;
         }
 
         @Override
         public FileVisitResult visitFileFailed(Path file, IOException exc) {
-            System.out.println("\nFAILED to Visit File. : " + file.toAbsolutePath() + "\n");
-            System.out.println(exc.getMessage());
+            failureCount++;
+            System.out.println("\nFAILED to Visit File. : " + file.toAbsolutePath() + "\n" + exc.getMessage());
             return FileVisitResult.CONTINUE;
         }
 
         @Override
         public FileVisitResult postVisitDirectory(Path dir, IOException exc) {
             dirsCount++;
-            renameFileToCurrentTimeStamp(dir.toFile(), dir.toAbsolutePath().toString());
+            handleRenameAndDeleteFile(dir.toFile());
             return FileVisitResult.CONTINUE;
+        }
+
+        private void handleRenameAndDeleteFile(File file) {
+
+            if (shouldDeleteFiles) {
+                boolean hasDeleted = deleteFileNow(file);
+                if (hasDeleted) {
+                    deletedFilesCount++;
+                    listOfSuccessfulFiles.add(file.getAbsolutePath());
+                } else {
+                    failureCount++;
+                    listOfFailedFiles.add(file.getAbsolutePath());
+                    System.out.println("Unable to Shred File : [" + file.getAbsolutePath() + "]\t|\tShredding Failed..!!\n");
+                }
+            } else {
+
+                String shreddedFileName = KOHStringUtil.generateCurrentTimeStamp() + " - " + System.nanoTime() + SHREDDED_EXTENSION;
+                boolean hasRenamed = renameFileNameToStr(file, shreddedFileName);
+
+                if (hasRenamed)
+                    listOfSuccessfulFiles.add(file.getAbsolutePath());
+                else {
+                    System.out.println("Unable to Shred File : [" + file.getAbsolutePath() + "]\t|\tShredding Failed..!!\n");
+                    listOfFailedFiles.add(file.getAbsolutePath());
+                }
+            }
+
+        }
+
+        public void displayLists(int listCode) {
+
+            switch (listCode) {
+                case 1:
+                    if (listOfFailedFiles.isEmpty())
+                        System.out.println("No Failed Files");
+                    else {
+                        System.out.println("Failed List of Files :");
+                        for (String ff : listOfFailedFiles)
+                            System.out.println(ff);
+                    }
+                    break;
+
+                case 2:
+                    if (listOfSuccessfulFiles.isEmpty())
+                        System.out.println("No Successful Files");
+                    else {
+                        System.out.println("Successful List of Files :");
+                        for (String sf : listOfSuccessfulFiles)
+                            System.out.println(sf);
+                    }
+                    break;
+
+                case 3:
+                    if (listOfFailedFiles.isEmpty())
+                        System.out.println("No Failed Files");
+                    else {
+                        System.out.println("Failed List of Files :");
+                        for (String ff : listOfFailedFiles)
+                            System.out.println(ff);
+                    }
+
+                    if (listOfSuccessfulFiles.isEmpty())
+                        System.out.println("No Successful Files");
+                    else {
+                        System.out.println("Successful List of Files :");
+                        for (String sf : listOfSuccessfulFiles)
+                            System.out.println(sf);
+                    }
+                    break;
+
+                default:
+                    System.out.println("Invalid listCode!\n1 --> listOfFailedFiles" +
+                            "\n2 --> listOfSuccessfulFiles\n3 --> Both the lists");
+            }
+
         }
     }
 
 }
-
-/*
- *  Date Created : 21st August 2K19, 09:44 PM..!!
- *  Time Stamp : 14th September 2K19, 08:36 PM..!!
- *
- *  Change Log:
- *
- *  Init Commit - The Data Shredder [CLI]
- *  1. Shred Entire Files & Dirs. as well as Segments / Portions of Data.
- *
- *  Code Developed By,
- *  ~K.O.H..!! ^__^
- */
